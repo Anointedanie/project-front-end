@@ -1,0 +1,162 @@
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main        # Deploy on push to main
+      - develop     # Deploy on push to develop (optional)
+  pull_request:
+    branches:
+      - main        # Build only (no deploy) on PRs
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+  REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Image and Deploy to EKS
+    runs-on: ubuntu-latest
+
+    # Only deploy on push to main/develop (not on PRs)
+    permissions:
+      contents: read
+      id-token: write  # For OIDC (future enhancement)
+
+    steps:
+      # ====================================
+      # Step 1: Checkout code from repository
+      # ====================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ====================================
+      # Step 2: Configure AWS credentials
+      # ====================================
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ====================================
+      # Step 3: Login to Amazon ECR
+      # ====================================
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ====================================
+      # Step 4: Build, tag, and push image to ECR
+      # ====================================
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}  # Use git commit SHA as tag
+        run: |
+          echo "Building Docker image..."
+
+          # Build Docker image with build arguments
+          docker build \
+            --build-arg REACT_APP_API_URL=${{ env.REACT_APP_API_URL }} \
+            --build-arg REACT_APP_ENV=production \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            .
+
+          echo "Pushing image to ECR..."
+          # Push both tags (commit SHA and latest)
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Output image URI for next steps
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "✅ Image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      # ====================================
+      # Step 5: Install and configure kubectl
+      # ====================================
+      - name: Install and configure kubectl
+        run: |
+          echo "Installing kubectl..."
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
+
+          echo "Configuring kubectl for EKS..."
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER_NAME }}
+
+          kubectl get nodes
+
+      # ====================================
+      # Step 6: Deploy to EKS
+      # ====================================
+      - name: Deploy to EKS
+        if: github.event_name == 'push'  # Only deploy on push, not PRs
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Deploying to EKS cluster..."
+
+          # Update deployment with new image
+          kubectl set image deployment/ecommerce-frontend \
+            ecommerce-frontend=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --namespace=production \
+            --record
+
+          # Wait for rollout to complete (timeout 5 minutes)
+          echo "Waiting for rollout to complete..."
+          kubectl rollout status deployment/ecommerce-frontend \
+            --namespace=production \
+            --timeout=5m
+
+          echo "✅ Deployment successful!"
+
+      # ====================================
+      # Step 7: Verify deployment
+      # ====================================
+      - name: Verify deployment
+        if: github.event_name == 'push'
+        run: |
+          echo "Verifying deployment..."
+
+          # Get pod status
+          kubectl get pods \
+            --namespace=production \
+            -l app=ecommerce-frontend \
+            -o wide
+
+          # Get service info
+          kubectl get services \
+            --namespace=production \
+            -l app=ecommerce-frontend
+
+          # Get deployment info
+          kubectl describe deployment ecommerce-frontend \
+            --namespace=production
+
+      # ====================================
+      # Step 8: Deployment summary
+      # ====================================
+      - name: Deployment summary
+        if: always()  # Run even if previous steps fail
+        run: |
+          echo "=========================================="
+          echo "📋 Deployment Summary"
+          echo "=========================================="
+          echo "Status: ${{ job.status }}"
+          echo "Image: ${{ steps.build-image.outputs.image }}"
+          echo "Cluster: ${{ env.EKS_CLUSTER_NAME }}"
+          echo "Region: ${{ env.AWS_REGION }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "=========================================="
