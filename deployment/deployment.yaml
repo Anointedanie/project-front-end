@@ -2,13 +2,13 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ecommerce-frontend
-  namespace: production
+  namespace: ecommerce
   labels:
     app: ecommerce-frontend
     environment: production
     version: v1.0.0
 spec:
-  replicas: 2  # Run 2 pods for high availability
+  replicas: 1  # Run 2 pods for high availability
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -27,7 +27,7 @@ spec:
       - name: ecommerce-frontend
         # IMPORTANT: Replace with your ECR repository URI
         # Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecommerce-frontend:latest
-        image: YOUR_AWS_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/ecommerce-frontend:latest
+        image: 793796654438.dkr.ecr.us-east-1.amazonaws.com/ecommerce/frontend:dev-5:dev-5
         imagePullPolicy: Always  # Always pull latest image
         ports:
         - name: http
