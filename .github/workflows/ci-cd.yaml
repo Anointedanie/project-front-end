@@ -59,7 +59,7 @@ jobs:
         run: |
           docker build \
             --build-arg REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }} \
-            --build-arg REACT_APP_ENV=production \
+            --build-arg REACT_APP_ENV=${{ secrets.REACT_APP_ENV }}\
             -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
             -t $REGISTRY/$IMAGE_NAME:latest \
             .
