@@ -3,13 +3,13 @@ on:
   push:
     branches:
       - main
-      - develop
-    tags:
-      - 'v*'
+      # - develop
+    # tags:
+    #   - 'v*'
   pull_request:
     branches:
       - main
-      - develop
+      # - develop
     paths-ignore:
       - 'README.md'
     
@@ -20,6 +20,7 @@ env:
 
 jobs:
   repo_checkout:
+    name: Checkout to github
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,11 +33,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
   aws_login_build_push:
-     runs-on: ubuntu-latest
-     permissions:
+    needs: repo_checkout
+    name: Builds and push to ecr
+    runs-on: ubuntu-latest
+    permissions:
       contents: read
       id-token: write
-     steps:
+    steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
