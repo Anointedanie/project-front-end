@@ -6,9 +6,7 @@ metadata:
 spec:
   secretName: ecommerce-frontend-tls-secret
   issuerRef:
-    # PRODUCTION - Trusted SSL certificates (limited to 5 certs/week)
-    name: letsencrypt-prod
-    # For testing (unlimited requests), use: letsencrypt-staging
+    name: letsencrypt-staging  # Using STAGING issuer (unlimited rate limits)
     kind: ClusterIssuer
   dnsNames:
     - shop.emchrismobility.com
