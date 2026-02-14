@@ -25,24 +25,24 @@ apiClient.interceptors.request.use(
 // Authentication APIs
 export const authAPI = {
   // User login
-  loginUser: (email, password) => 
-    apiClient.post('/auth/login/', { email, password }),
-  
+  loginUser: (email, password) =>
+    apiClient.post('/auth/login', { email, password }),
+
   // Admin login
-  loginAdmin: (email, password) => 
-    apiClient.post('/auth/admin/login/', { email, password }),
-  
+  loginAdmin: (email, password) =>
+    apiClient.post('/auth/admin/login', { email, password }),
+
   // Register user
-  register: (userData) => 
-    apiClient.post('/auth/register/', userData),
-  
+  register: (userData) =>
+    apiClient.post('/auth/register', userData),
+
   // Logout
-  logout: () => 
-    apiClient.post('/auth/logout/'),
-  
+  logout: () =>
+    apiClient.post('/auth/logout'),
+
   // Verify token
-  verifyToken: () => 
-    apiClient.get('/auth/verify/'),
+  verifyToken: () =>
+    apiClient.get('/auth/verify'),
 };
 
 // Product APIs

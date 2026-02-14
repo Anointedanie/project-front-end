@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ecommerce-frontend
-  namespace: ecommerce
+  namespace: ecommerce-frontend-ns
   labels:
     app: ecommerce-frontend
     environment: production
@@ -26,8 +26,7 @@ spec:
       containers:
       - name: ecommerce-frontend
         # IMPORTANT: Replace with your ECR repository URI
-        # Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecommerce-frontend:latest
-        image: 793796654438.dkr.ecr.us-east-1.amazonaws.com/ecommerce/frontend:dev-5:dev-5
+        image: 793796654438.dkr.ecr.us-east-1.amazonaws.com/ecommerce/frontend:test2
         imagePullPolicy: Always  # Always pull latest image
         ports:
         - name: http
