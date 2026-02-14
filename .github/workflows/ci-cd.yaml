@@ -96,6 +96,10 @@ jobs:
 
       - name: Setup prerequisites (auto-installs everything)
         run: |
+          # Ensure .kube directory exists with correct permissions
+          mkdir -p ~/.kube
+          chmod 755 ~/.kube
+
           cd automation_script
           # Explicitly pass AWS credentials to sudo environment
           sudo -E \
@@ -105,6 +109,10 @@ jobs:
             AWS_REGION="${AWS_REGION:-us-east-1}" \
             HOME="${HOME}" \
             ./check_prerequisites.py
+
+          # Fix kubeconfig permissions (created by sudo, needed by non-sudo deploy)
+          sudo chown -R $USER:$USER ~/.kube || true
+          sudo chmod 600 ~/.kube/config || true
 
       - name: Deploy to EKS
         run: |
