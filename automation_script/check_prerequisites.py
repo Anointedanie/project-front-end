@@ -252,17 +252,33 @@ def configure_eks_cluster():
     """Configure EKS cluster connection"""
     print(f"\n{Colors.BLUE}Configuring EKS cluster connection...{Colors.END}")
 
-    cmd = "aws eks update-kubeconfig --region us-east-1 --name ecommerce-eks"
+    cmd = "aws eks update-kubeconfig --region us-east-1 --name ecommerce-eks 2>&1"
     print(f"  Running: {cmd}")
-    returncode, _, stderr = run_command(cmd, check=False)
+    returncode, stdout, stderr = run_command(cmd, check=False)
 
     if returncode == 0:
         print_success("EKS cluster configured successfully")
+        # Show output for debugging
+        if stdout.strip():
+            print(f"  {Colors.BLUE}{stdout.strip()}{Colors.END}")
         return True
+
+    # Combine stdout and stderr for complete error message
+    error_msg = (stderr + stdout).strip() if stderr or stdout else "Unknown error"
+    print_error(f"Failed to configure EKS cluster:")
+    print(f"  {Colors.RED}{error_msg}{Colors.END}")
+
+    # Check if it's a permissions issue
+    if "AccessDenied" in error_msg or "not authorized" in error_msg:
+        print(f"  {Colors.YELLOW}IAM permissions issue detected{Colors.END}")
+        print(f"  {Colors.YELLOW}Ensure the AWS credentials have these permissions:{Colors.END}")
+        print(f"  {Colors.YELLOW}  - eks:DescribeCluster{Colors.END}")
+        print(f"  {Colors.YELLOW}  - eks:ListClusters{Colors.END}")
     else:
-        print_error(f"Failed to configure EKS cluster: {stderr}")
         print(f"  {Colors.YELLOW}Ensure AWS CLI is installed and configured{Colors.END}")
-        return False
+        print(f"  {Colors.YELLOW}Cluster: ecommerce-eks in us-east-1{Colors.END}")
+
+    return False
 
 
 def check_cluster():
@@ -551,12 +567,17 @@ def check_aws_credentials():
     ok, _, _ = run_command("aws sts get-caller-identity 2>/dev/null")
 
     if ok:
-        # Get account info
+        # Get account info and user/role ARN
         ok_account, account_output, _ = run_command(
             "aws sts get-caller-identity --query 'Account' --output text 2>/dev/null"
         )
+        ok_arn, arn_output, _ = run_command(
+            "aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null"
+        )
         account = account_output.strip() if ok_account else "configured"
         result = print_check("AWS credentials", True, f"Account: {account}")
+        if ok_arn and arn_output.strip():
+            print(f"  {Colors.BLUE}IAM Identity: {arn_output.strip()}{Colors.END}")
     else:
         result = print_check("AWS credentials", False, "Not configured")
         print(f"  {Colors.YELLOW}⚠ AWS credentials not configured{Colors.END}")

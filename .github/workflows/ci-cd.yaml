@@ -97,8 +97,14 @@ jobs:
       - name: Setup prerequisites (auto-installs everything)
         run: |
           cd automation_script
-          # Use sudo -E to preserve environment variables (AWS credentials)
-          sudo -E ./check_prerequisites.py
+          # Explicitly pass AWS credentials to sudo environment
+          sudo -E \
+            AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+            AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+            AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}" \
+            AWS_REGION="${AWS_REGION:-us-east-1}" \
+            HOME="${HOME}" \
+            ./check_prerequisites.py
 
       - name: Deploy to EKS
         run: |
