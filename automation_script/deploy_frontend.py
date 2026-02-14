@@ -198,13 +198,19 @@ def main():
     # Configuration
     NAMESPACE = "ecommerce-frontend-ns"
     SECRET_NAME = "ecommerce-frontend-tls-secret"
+    # PRODUCTION configuration (trusted SSL certificates)
     CLUSTERISSUER_NAME = "letsencrypt-prod"
+    # For testing (unlimited requests), use: "letsencrypt-staging"
     INGRESS_NAME = "ecommerce-frontend-ingress"
 
     # YAML files (relative to script location in automation_script/)
     NAMESPACE_YAML = "../deployment/namespace.yaml"
+    # PRODUCTION issuer (limited to 5 certs/week)
     CLUSTERISSUER_YAML = "../deployment/clusterissuer.yaml"
     CERTIFICATE_YAML = "../deployment/certificate.yaml"
+    # For testing (unlimited requests), use:
+    # CLUSTERISSUER_YAML = "../deployment/clusterissuer-staging.yaml"
+    # CERTIFICATE_YAML = "../deployment/certificate-staging.yaml"
     DEPLOYMENT_YAML = "../deployment/deployment.yaml"
     SERVICE_YAML = "../deployment/service.yaml"
     INGRESS_YAML = "../deployment/frontend-ingress.yaml"
