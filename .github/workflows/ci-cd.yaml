@@ -68,10 +68,10 @@ jobs:
       - name: Commit and push updated deployment file
         if: github.event_name != 'pull_request'
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "chriscrsov"
+          git config --global user.email "chriscrsov@gmail.com"
           git add deployment/deployment.yaml
-          git commit -m "Update deployment image to $IMAGE_TAG [skip ci]" || echo "No changes to commit"
+          git commit -m "fix: update deployment image to $IMAGE_TAG [skip ci]" || echo "No changes to commit"
           git push
 
 
@@ -96,23 +96,8 @@ jobs:
 
       - name: Setup prerequisites (auto-installs everything)
         run: |
-          # Ensure .kube directory exists with correct permissions
-          mkdir -p ~/.kube
-          chmod 755 ~/.kube
-
           cd automation_script
-          # Explicitly pass AWS credentials to sudo environment
-          sudo -E \
-            AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
-            AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
-            AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}" \
-            AWS_REGION="${AWS_REGION:-us-east-1}" \
-            HOME="${HOME}" \
-            ./check_prerequisites.py
-
-          # Fix kubeconfig permissions (created by sudo, needed by non-sudo deploy)
-          sudo chown -R $USER:$USER ~/.kube || true
-          sudo chmod 600 ~/.kube/config || true
+          sudo ./check_prerequisites.py
 
       - name: Deploy to EKS
         run: |
