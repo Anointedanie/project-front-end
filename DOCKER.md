@@ -29,9 +29,9 @@ The Dockerfile uses a **multi-stage build** approach for optimal image size and 
   - Static asset caching
 - Runs as non-root user for security
 - Includes health checks
-- Uses dumb-init for proper signal handling...............
+- Uses dumb-init for proper signal handling
 
-## Build Argument
+## Build Arguments
 
 The Dockerfile accepts the following build arguments:
 
