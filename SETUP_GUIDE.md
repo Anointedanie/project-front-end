@@ -12,6 +12,7 @@ Welcome! This guide will walk you through setting up and understanding the e-com
 6. [Understanding the Codebase](#understanding-the-codebase)
 7. [Making Your First Changes](#making-your-first-changes)
 8. [Deployment Workflow](#deployment-workflow)
+9. [Running with Docker (Without Docker Compose)](#running-with-docker-without-docker-compose)
 
 ## Prerequisites
 
@@ -467,6 +468,216 @@ This will be done later with:
 - CloudFormation templates
 - Terraform/Pulumi
 - EKS deployment
+
+## Running with Docker (Without Docker Compose)
+
+This section walks through the full lifecycle of running the app with the plain `docker` CLI — no Compose, no Makefile wrappers. Use this when deploying to a single host (EC2, bare metal, ECS task, etc.) or when you want to understand exactly what happens at each step.
+
+### How the Dockerfile Is Wired
+
+The `Dockerfile` is a multi-stage build:
+
+1. **Build stage** (`node:18-alpine`) compiles the React app with `npm run build`.
+2. **Production stage** (`nginx:alpine`) serves the static build via Nginx on port `80`.
+
+Because React inlines environment variables **at build time** (not runtime), the API URL and environment name must be passed as `--build-arg` values. Changing them later requires rebuilding the image.
+
+Build arguments declared in the Dockerfile:
+
+| Build Arg            | Purpose                                  | Default       |
+| -------------------- | ---------------------------------------- | ------------- |
+| `REACT_APP_API_URL`  | Backend API base URL baked into the JS   | *(required)*  |
+| `REACT_APP_ENV`      | Environment label (`development`/`production`) | `production` |
+
+### Step 1: Build the Image
+
+From the project root (where the `Dockerfile` lives):
+
+```bash
+# Production build pointing at your real backend
+docker build \
+  --build-arg REACT_APP_API_URL=https://api.yourdomain.com/api \
+  --build-arg REACT_APP_ENV=production \
+  -t ecommerce-frontend:latest \
+  .
+```
+
+Local/dev build pointing at a Django server on the host:
+
+```bash
+docker build \
+  --build-arg REACT_APP_API_URL=http://localhost:8000/api \
+  --build-arg REACT_APP_ENV=development \
+  -t ecommerce-frontend:dev \
+  .
+```
+
+Useful flags:
+
+- `--no-cache` — force a clean rebuild (use after dependency changes).
+- `--progress=plain` — show full build output instead of the collapsed view.
+- `--platform linux/amd64` — required when building on Apple Silicon for an x86 deploy target (EC2, EKS nodes).
+
+Tag with a version for traceability:
+
+```bash
+docker build \
+  --build-arg REACT_APP_API_URL=https://api.yourdomain.com/api \
+  --build-arg REACT_APP_ENV=production \
+  -t ecommerce-frontend:v1.0.0 \
+  -t ecommerce-frontend:latest \
+  .
+```
+
+### Step 2: Run the Container Locally
+
+```bash
+docker run -d \
+  --name ecommerce-frontend \
+  -p 8080:80 \
+  --restart unless-stopped \
+  ecommerce-frontend:latest
+```
+
+- `-d` runs detached (in the background).
+- `-p 8080:80` maps host port `8080` to the container's Nginx on port `80`. Use `-p 80:80` to bind the standard HTTP port (needs root/sudo on Linux).
+- `--restart unless-stopped` auto-restarts the container on crash or host reboot.
+
+Visit `http://localhost:8080` to verify. Then check container health:
+
+```bash
+docker ps                              # Should show "healthy" once healthcheck passes
+docker logs -f ecommerce-frontend      # Tail Nginx access/error logs
+docker exec -it ecommerce-frontend sh  # Shell into the container
+```
+
+Stop and remove:
+
+```bash
+docker stop ecommerce-frontend
+docker rm ecommerce-frontend
+```
+
+### Step 3: Push the Image to a Registry
+
+Tag the image for the target registry, then push. Replace `<registry>` with your registry hostname (e.g., `123456789012.dkr.ecr.us-east-1.amazonaws.com`, `ghcr.io/yourorg`, `docker.io/yourorg`).
+
+**Docker Hub:**
+
+```bash
+docker login
+docker tag ecommerce-frontend:v1.0.0 yourorg/ecommerce-frontend:v1.0.0
+docker push yourorg/ecommerce-frontend:v1.0.0
+```
+
+**AWS ECR:**
+
+```bash
+# Authenticate Docker to ECR
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
+
+# Create the repo once (idempotent — ignore "already exists")
+aws ecr create-repository --repository-name ecommerce-frontend --region us-east-1 || true
+
+# Tag and push
+docker tag ecommerce-frontend:v1.0.0 \
+  123456789012.dkr.ecr.us-east-1.amazonaws.com/ecommerce-frontend:v1.0.0
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/ecommerce-frontend:v1.0.0
+```
+
+**GitHub Container Registry (GHCR):**
+
+```bash
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+docker tag ecommerce-frontend:v1.0.0 ghcr.io/yourorg/ecommerce-frontend:v1.0.0
+docker push ghcr.io/yourorg/ecommerce-frontend:v1.0.0
+```
+
+### Step 4: Deploy on the Target Host
+
+SSH to the deployment host, then pull and run:
+
+```bash
+# Authenticate to the registry (same command used when pushing)
+docker login <registry>
+
+# Pull the exact version you pushed
+docker pull <registry>/ecommerce-frontend:v1.0.0
+
+# Stop & remove any previous container
+docker stop ecommerce-frontend 2>/dev/null || true
+docker rm   ecommerce-frontend 2>/dev/null || true
+
+# Start the new one
+docker run -d \
+  --name ecommerce-frontend \
+  -p 80:80 \
+  --restart unless-stopped \
+  <registry>/ecommerce-frontend:v1.0.0
+```
+
+Verify it's healthy:
+
+```bash
+docker ps --filter name=ecommerce-frontend
+curl -I http://localhost/
+docker logs --tail 50 ecommerce-frontend
+```
+
+### Step 5: Rolling Updates
+
+For zero-downtime-ish updates on a single host:
+
+```bash
+# 1. Pull the new image
+docker pull <registry>/ecommerce-frontend:v1.1.0
+
+# 2. Start the new container on a temporary port
+docker run -d --name ecommerce-frontend-new -p 8081:80 \
+  <registry>/ecommerce-frontend:v1.1.0
+
+# 3. Smoke-test it
+curl -I http://localhost:8081/
+
+# 4. Cut over: stop old, rename new, rebind port
+docker stop ecommerce-frontend && docker rm ecommerce-frontend
+docker stop ecommerce-frontend-new && docker rm ecommerce-frontend-new
+docker run -d --name ecommerce-frontend -p 80:80 --restart unless-stopped \
+  <registry>/ecommerce-frontend:v1.1.0
+```
+
+For true zero-downtime, front the container with a load balancer (ALB, Nginx) and drain connections before swapping.
+
+### Build/Run Cheat Sheet
+
+```bash
+# Build
+docker build \
+  --build-arg REACT_APP_API_URL=https://api.yourdomain.com/api \
+  --build-arg REACT_APP_ENV=production \
+  -t ecommerce-frontend:latest .
+
+# Run
+docker run -d --name ecommerce-frontend -p 80:80 --restart unless-stopped \
+  ecommerce-frontend:latest
+
+# Inspect / debug
+docker logs -f ecommerce-frontend
+docker exec -it ecommerce-frontend sh
+docker inspect ecommerce-frontend
+
+# Cleanup
+docker stop ecommerce-frontend && docker rm ecommerce-frontend
+docker image prune -f
+```
+
+### Common Pitfalls
+
+- **API URL is wrong after rebuild?** You changed `REACT_APP_API_URL` but didn't pass `--build-arg` — runtime `-e` flags do nothing for a React app; rebuild the image.
+- **`exec format error` on EC2?** You built on Apple Silicon without `--platform linux/amd64`. Rebuild with the right platform.
+- **Healthcheck never goes "healthy"?** Nginx is up but inside the container `wget http://localhost/` fails — check `nginx.conf` and `docker logs`.
+- **Port 80 permission denied?** On Linux, binding `:80` needs root. Either `sudo docker run ...` or map to a high port like `-p 8080:80`.
 
 ## Learning Resources
 
