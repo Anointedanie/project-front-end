@@ -20,7 +20,7 @@ The Dockerfile uses a **multi-stage build** approach for optimal image size and 
 - Produces optimized production assets
 
 ### Production Stage
-- Uses `nginx:alpine` for serving static files
+- Uses `nginx:alpine` for serving static files......
 - Includes custom nginx configuration with:
   - Gzip compression
   - Security headers
@@ -31,7 +31,7 @@ The Dockerfile uses a **multi-stage build** approach for optimal image size and 
 - Includes health checks
 - Uses dumb-init for proper signal handling
 
-## Build Arguments
+## Build Argument
 
 The Dockerfile accepts the following build arguments:
 
